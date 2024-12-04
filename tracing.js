@@ -15,30 +15,46 @@ const { registerInstrumentations } = require("@opentelemetry/instrumentation");
 
 // Exporter and Provider Setup
 module.exports = (serviceName) => {
-   // Configure Jaeger Exporter
+    // Configure Jaeger Exporter
     const exporter = new JaegerExporter({
         endpoint: "http://localhost:14268/api/traces",
     });
 
-   const provider = new NodeTracerProvider({
-       resource: new Resource({
-           [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
-       }),
-   });
+    const provider = new NodeTracerProvider({
+        resource: new Resource({
+            [SemanticResourceAttributes.SERVICE_NAME]: serviceName,
+        }),
+    });
 
-   // Add the Jaeger Exporter to the provider
-   provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
-   provider.register();
+    // Add the Jaeger Exporter to the provider
+    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+    provider.register();
 
-   // Register instrumentations
-   registerInstrumentations({
-       instrumentations: [
-           new HttpInstrumentation(),
-           new ExpressInstrumentation(),
-           new MongoDBInstrumentation(),
-       ],
-       tracerProvider: provider,
-   });
+    // Configure HttpInstrumentation with request and response hooks
+    const httpInstrumentation = new HttpInstrumentation({
+        requestHook: (span, requestInfo) => {
+            console.log("HTTP Request Captured:", requestInfo);
+        },
+        responseHook: (span, responseInfo) => {
+            console.log("HTTP Response Captured:", responseInfo);
+        },
+    });
 
-   return trace.getTracer(serviceName);
+    // Configure ExpressInstrumentation to not suppress HTTP instrumentation
+    const expressInstrumentation = new ExpressInstrumentation({
+        suppressHttpServerInstrumentation: false, // Enable HTTP server instrumentation
+    });
+
+    // Register instrumentations
+    registerInstrumentations({
+        instrumentations: [
+            httpInstrumentation,
+            expressInstrumentation,
+            new MongoDBInstrumentation(),
+        ],
+        tracerProvider: provider,
+    });
+
+    console.log("Tracing initialized for:", serviceName);
+    return trace.getTracer(serviceName);
 };
